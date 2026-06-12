@@ -8,6 +8,10 @@
 #include "raylib.h"
 #include "raymath.h"
 
+constexpr Vector2 floor(Vector2 value) {
+    return Vector2{std::floor(value.x), std::floor(value.y)};
+}
+
 constexpr float sign(float value) {
     if (value < 0) {
         return -1.0f;
@@ -129,9 +133,9 @@ int main() {
         auto height = GetScreenHeight();
         auto mouse_position = GetMousePosition();
         auto mouse_world_position = GetScreenToWorld2D(mouse_position, camera);
-        auto mouse_cell =
-            Vector2i{static_cast<int>(std::floor(mouse_world_position.x / CELL_SIZE)),
-                     static_cast<int>(std::floor(mouse_world_position.y / CELL_SIZE))};
+        auto mouse_cell = Vector2i{
+            static_cast<int>(std::floor(mouse_world_position.x / CELL_SIZE)),
+            static_cast<int>(std::floor(mouse_world_position.y / CELL_SIZE))};
         bool tick = false;
         auto wheel = GetMouseWheelMove();
 
@@ -166,10 +170,20 @@ int main() {
                 std::max(std::exp(std::log(camera.zoom) + scale), MAX_ZOOM_OUT);
         }
 
+        if (IsKeyPressed(KEY_R)) {
+            camera.offset = mouse_position;
+            camera.target = mouse_world_position;
+
+            camera.rotation += 45.0f;
+            if (camera.rotation >= 360.0f) {
+                camera.rotation = 0.0f;
+            }
+        }
+
         if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
             auto delta = GetMouseDelta();
             delta *= -1.0f / camera.zoom;
-            camera.target += delta;
+            camera.target += Vector2Rotate(delta, -camera.rotation * DEG2RAD);
         }
 
         if (IsKeyPressed(KEY_RIGHT)) {
@@ -275,42 +289,41 @@ int main() {
             DrawRectangle(cell.x * CELL_SIZE, cell.y * CELL_SIZE, CELL_SIZE,
                           CELL_SIZE, CELL_COLOR);
         }
-        EndMode2D();
 
         constexpr auto GRID_SPACING = 40;
         constexpr auto GRID_COLOR = GRAY;
 
-        auto spacing = camera.zoom * GRID_SPACING;
-
-        bool draw_grid = grid && spacing > 5;
+        bool draw_grid = grid && (camera.zoom * GRID_SPACING > 5);
         if (draw_grid) {
-            {
-                auto camera_offset_from_origin =
-                    camera.target.x * camera.zoom - camera.offset.x;
-                auto offset =
-                    fractional(camera_offset_from_origin / spacing) * spacing;
-                for (int i = 0; i < static_cast<int>((width / spacing)) + 2; ++i) {
-                    auto line_start = Vector2{-offset + i * spacing, 0};
-                    auto line_end =
-                        Vector2{-offset + i * spacing, static_cast<float>(height)};
-                    DrawLineV(line_start, line_end, GRID_COLOR);
-                }
+            auto screen_vec = Vector2{static_cast<float>(width), static_cast<float>(height)} / camera.zoom;
+            auto offset_world_space = Vector2Negate(camera.offset / camera.zoom);
+            auto camera_top_left_world = camera.target + offset_world_space;
+            auto camera_bottom_right_world = camera_top_left_world 
+                + screen_vec;
+
+            camera_top_left_world -= screen_vec * 2.0f;
+            camera_bottom_right_world += screen_vec * 2.0f;
+
+            auto start = camera_top_left_world + Vector2{GRID_SPACING, GRID_SPACING} - (camera_top_left_world -
+                    floor(camera_top_left_world / GRID_SPACING) * GRID_SPACING);
+            auto end = camera_bottom_right_world;
+
+            for (auto x = start.x; x <= end.x; x += GRID_SPACING) {
+                auto line_start = Vector2{x, camera_top_left_world.y};
+                auto line_end =
+                    Vector2{x, camera_bottom_right_world.y};
+                DrawLineV(line_start, line_end, GRID_COLOR);
             }
 
-            {
-                auto camera_offset_from_origin =
-                    camera.target.y * camera.zoom - camera.offset.y;
-                auto offset =
-                    fractional(camera_offset_from_origin / spacing) * spacing;
-                for (int i = 0; i < static_cast<int>((height / spacing)) + 2; ++i) {
-                    auto line_start = Vector2{0, -offset + i * spacing};
-                    auto line_end = Vector2{static_cast<float>(width),
-                                            -offset + i * spacing};
-                    DrawLineV(line_start, line_end, GRID_COLOR);
-                }
+            for (auto y = start.y; y <= end.y; y += GRID_SPACING) {
+                auto line_start = Vector2{camera_top_left_world.x, y};
+                auto line_end =
+                    Vector2{camera_bottom_right_world.x, y};
+                DrawLineV(line_start, line_end, GRID_COLOR);
             }
         }
-
+        EndMode2D();
+        
         if (show_info) {
             format_buffer.clear();
             std::format_to(
