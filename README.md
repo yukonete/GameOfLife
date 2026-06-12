@@ -8,3 +8,4 @@ Keybinds:
 - G - toggle grid
 - H - toggle info
 - F - toggle fps limit
+- R - rotate screen by 45 degrees
